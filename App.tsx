@@ -846,15 +846,13 @@ const GeneralStrengthView: FC<{ assessments: GeneralStrength[], isPrinting?: boo
             return grouped[ex]?.[0];
         }).filter(Boolean) as GeneralStrength[];
 
-        // FIX: Explicitly type sort callback parameters as string to resolve type inference issue.
+        // FIX: Changed unknown to string for sort callback parameters to fix type error.
         const dates = Array.from(new Set(assessments.map(a => a.date))).sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime());
         const evolutionData = dates.map(date => {
             const entry: { [key: string]: any } = { date: formatDate(date) };
             for (const ex of Object.values(GeneralStrengthExercise)) {
                 const assessmentForDate = assessments.find(a => a.date === date && a.exercise === ex);
-                // FIX: The `onDelete` function expects a string, but `ex` is of type `GeneralStrengthExercise`.
-                // Coercing `ex` to a string resolves the type mismatch.
-                entry[ex as string] = assessmentForDate ? assessmentForDate.load : null;
+                entry[ex] = assessmentForDate ? assessmentForDate.load : null;
             }
             return entry;
         });

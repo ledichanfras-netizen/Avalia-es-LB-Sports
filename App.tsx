@@ -846,13 +846,15 @@ const GeneralStrengthView: FC<{ assessments: GeneralStrength[], isPrinting?: boo
             return grouped[ex]?.[0];
         }).filter(Boolean) as GeneralStrength[];
 
-        // FIX: Use Array.from(new Set(...)) for better type inference to avoid 'unknown' type on array elements.
+        // FIX: Explicitly type sort callback parameters as string to resolve type inference issue.
         const dates = Array.from(new Set(assessments.map(a => a.date))).sort((a: string, b: string) => new Date(a).getTime() - new Date(b).getTime());
         const evolutionData = dates.map(date => {
             const entry: { [key: string]: any } = { date: formatDate(date) };
             for (const ex of Object.values(GeneralStrengthExercise)) {
                 const assessmentForDate = assessments.find(a => a.date === date && a.exercise === ex);
-                entry[ex] = assessmentForDate ? assessmentForDate.load : null;
+                // FIX: The `onDelete` function expects a string, but `ex` is of type `GeneralStrengthExercise`.
+                // Coercing `ex` to a string resolves the type mismatch.
+                entry[ex as string] = assessmentForDate ? assessmentForDate.load : null;
             }
             return entry;
         });
@@ -1240,19 +1242,19 @@ const AthleteForm: FC<{ onSave: (data: Omit<Athlete, 'id' | 'assessments'> | Ath
     );
 };
 
-const AthleteProfile: FC<{ athlete: Athlete; onBack: () => void; addAssessment: (athleteId: string, type: AssessmentType, data: any) => void; updateAssessment: (athleteId: string, type: AssessmentType, data: any) => void; deleteAssessment: (athleteId: string, type: AssessmentType, assessmentId: string) => void; onExportPDF: (type: AssessmentType | 'all') => void; userRole: 'admin' | 'student'; onEdit: () => void; onRequestDelete: () => void; }> = ({ athlete, onBack, addAssessment, updateAssessment, deleteAssessment, onExportPDF, userRole, onEdit, onRequestDelete }) => {
+const AthleteProfile: FC<{ athlete: Athlete; onBack: () => void; addAssessment: (athleteId: string, type: AssessmentType, data: any) => Promise<void>; updateAssessment: (athleteId: string, type: AssessmentType, data: any) => Promise<void>; deleteAssessment: (athleteId: string, type: AssessmentType, assessmentId: string) => Promise<void>; onExportPDF: (type: AssessmentType | 'all') => void; userRole: 'admin' | 'student'; onEdit: () => void; onRequestDelete: () => void; }> = ({ athlete, onBack, addAssessment, updateAssessment, deleteAssessment, onExportPDF, userRole, onEdit, onRequestDelete }) => {
     const [addingAssessment, setAddingAssessment] = useState<AssessmentType | null>(null);
     const [editingAssessment, setEditingAssessment] = useState<{type: AssessmentType, data: AssessmentData} | null>(null);
     const [activeTab, setActiveTab] = useState<AssessmentType>('bioimpedance');
     const [confirmDeleteAssessment, setConfirmDeleteAssessment] = useState<{type: AssessmentType, id: string} | null>(null);
 
-    const handleAddAssessment = (type: AssessmentType, data: any) => {
-        addAssessment(athlete.id, type, data);
+    const handleAddAssessment = async (type: AssessmentType, data: any) => {
+        await addAssessment(athlete.id, type, data);
         setAddingAssessment(null);
     };
 
-    const handleUpdateAssessment = (type: AssessmentType, data: any) => {
-        updateAssessment(athlete.id, type, data);
+    const handleUpdateAssessment = async (type: AssessmentType, data: any) => {
+        await updateAssessment(athlete.id, type, data);
         setEditingAssessment(null);
     };
 
@@ -1260,9 +1262,9 @@ const AthleteProfile: FC<{ athlete: Athlete; onBack: () => void; addAssessment: 
         setConfirmDeleteAssessment({ type, id: assessmentId });
     };
 
-    const executeDeleteAssessment = () => {
+    const executeDeleteAssessment = async () => {
         if (confirmDeleteAssessment) {
-            deleteAssessment(athlete.id, confirmDeleteAssessment.type, confirmDeleteAssessment.id);
+            await deleteAssessment(athlete.id, confirmDeleteAssessment.type, confirmDeleteAssessment.id);
             setConfirmDeleteAssessment(null);
         }
     };
@@ -1632,19 +1634,9 @@ const App: FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [confirmDeleteAthleteId, setConfirmDeleteAthleteId] = useState<string | null>(null);
   
-  // Check for saved user session on initial load
-  useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem('lb_sports_user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
-    } catch (error) {
-        console.error("Failed to parse user from localStorage", error);
-        localStorage.removeItem('lb_sports_user');
-    }
-  }, []);
-
+  // No need to check for saved user session as data is in-memory and resets on refresh.
+  // The login screen will always show first.
+  
   const filteredAthletes = useMemo(() => 
     athletes.filter(athlete =>
       athlete.name.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1667,14 +1659,12 @@ const App: FC = () => {
 
   const handleLogin = (loggedInUser: User) => {
       setUser(loggedInUser);
-      localStorage.setItem('lb_sports_user', JSON.stringify(loggedInUser));
   };
 
   const handleLogout = () => {
       setUser(null);
       setSelectedAthleteId(null);
       setCurrentView('list');
-      localStorage.removeItem('lb_sports_user');
   };
 
   const handleSelectAthlete = (athlete: Athlete) => {
@@ -1696,12 +1686,12 @@ const App: FC = () => {
       setCurrentView('form');
   };
 
-  const handleSaveAthleteForm = (data: Omit<Athlete, 'id' | 'assessments'> | Athlete) => {
+  const handleSaveAthleteForm = async (data: Omit<Athlete, 'id' | 'assessments'> | Athlete) => {
     if ('id' in data) { // It's an update
-        updateAthlete(data as Athlete);
+        await updateAthlete(data as Athlete);
         setCurrentView('profile');
     } else { // It's a new athlete
-        addAthlete(data);
+        await addAthlete(data);
         setCurrentView('list');
     }
   };
@@ -1714,9 +1704,9 @@ const App: FC = () => {
       }
   };
   
-  const executeDeleteAthlete = () => {
+  const executeDeleteAthlete = async () => {
     if (confirmDeleteAthleteId) {
-        deleteAthlete(confirmDeleteAthleteId);
+        await deleteAthlete(confirmDeleteAthleteId);
         setConfirmDeleteAthleteId(null);
         handleBackToList();
     }
